@@ -36,6 +36,12 @@ Before you begin, ensure you have the following installed and configured:
 *   **Isolated Project Execution:** Runs generated Python scripts within their specific, isolated virtual environments managed by UV.
 *   **Basic Error Handling & Iteration:** Includes basic mechanisms to catch errors during script execution and allows iterating with the AI to debug and fix the code.
 
+## Acknowledgements
+
+This project heavily relies on **LM Studio** to enable local AI model execution via its server feature. A big thank you to the **LM Studio team** for creating and maintaining such a fantastic and user-friendly tool!
+
+*   Learn more about LM Studio: [https://lmstudio.ai/](https://lmstudio.ai/)
+
 ## Planned Improvements / Roadmap
 
 *   [ ] Enhanced conversational interaction with the AI.
