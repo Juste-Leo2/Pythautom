@@ -36,6 +36,12 @@ Avant de commencer, assurez-vous d'avoir installé et configuré les éléments 
 *   **Exécution Isolée des Projets :** Exécute les scripts Python générés dans leurs environnements virtuels spécifiques et isolés, gérés par UV.
 *   **Gestion Basique des Erreurs & Itération :** Inclut des mécanismes de base pour attraper les erreurs lors de l'exécution des scripts et permet d'itérer avec l'IA pour déboguer et corriger le code.
 
+## Remerciements
+
+Ce projet s'appuie fortement sur **LM Studio** pour permettre l'exécution locale de modèles d'IA via sa fonctionnalité de serveur. Un grand merci à **l'équipe de LM Studio** pour la création et la maintenance d'un outil aussi fantastique et convivial !
+
+*   En savoir plus sur LM Studio : [https://lmstudio.ai/](https://lmstudio.ai/)
+
 ## Améliorations Prévues / Feuille de Route
 
 *   [ ] Interaction conversationnelle améliorée avec l'IA.
