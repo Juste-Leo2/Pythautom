@@ -1,3 +1,4 @@
+#main.py
 import sys
 from PyQt6.QtWidgets import QApplication
 from src.gui import MainWindow # Use relative import from src
