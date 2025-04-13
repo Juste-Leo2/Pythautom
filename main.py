@@ -1,14 +1,23 @@
-#main.py
+# main.py
 import sys
 from PyQt6.QtWidgets import QApplication
-from src.gui import MainWindow # Use relative import from src
+# Import from the new main window file
+from src.gui_main_window import MainWindow
+import os
+# Ensure project_manager is imported for its side effects (defining PROJECTS_DIR etc.)
+from src import project_manager
+from src import utils # Might be needed if main calls utils directly later
 
 def main():
     """Main function to initialize and run the application."""
     app = QApplication(sys.argv)
 
-    # You could load stylesheets here if desired
-    # app.setStyleSheet(...)
+    # Optional: Load stylesheets if you have one
+    # try:
+    #     with open("stylesheet.qss", "r") as f:
+    #         app.setStyleSheet(f.read())
+    # except FileNotFoundError:
+    #     print("Stylesheet not found, using default style.")
 
     window = MainWindow()
     window.show()
@@ -16,17 +25,27 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    # Ensure the 'src' directory can be imported (if running main.py directly)
-    # This might not be strictly necessary if run via run.bat setting PYTHONPATH,
-    # but good practice for direct execution.
-    import os
-    # Add project root to sys.path if main.py is executed directly
-    if os.path.basename(os.getcwd()) != 'your-app-folder' and os.path.exists('src'):
-         # If running from root, Python should find src. If running from src, imports work.
-         pass # Usually handled by Python's module search path
+    # Ensure the main 'projets' directory exists before starting GUI
+    try:
+        project_manager.ensure_projects_dir()
+    except Exception as e:
+         print(f"CRITICAL ERROR: Could not ensure projects directory exists: {e}")
+         # Optionally show a simple GUI error message here before exiting
+         # Needs QApplication instance, so might be complex. Printing is safer.
+         sys.exit(1) # Exit if the base directory cannot be created
 
-    # Create required directories if they don't exist
-    from src import project_manager
-    project_manager.ensure_projects_dir()
+    # Check for UV dependency early?
+    try:
+        uv_check = utils.run_uv_command(["--version"], capture=True)
+        if uv_check is None or uv_check.returncode != 0:
+             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+             print("!!! WARNING: 'uv' command failed or not found.             !!!")
+             print("!!! Virtual environment and dependency management WILL FAIL. !!!")
+             print("!!! Please install uv: https://github.com/astral-sh/uv     !!!")
+             print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+             # Optionally show a warning dialog? For now, just print.
+    except Exception as uv_e:
+         print(f"Error checking for UV: {uv_e}")
+
 
     main()

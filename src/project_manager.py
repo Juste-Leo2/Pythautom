@@ -1,151 +1,242 @@
 # src/project_manager.py
+# Needs re import added in main.py or here
 import os
 import json
-import shutil # <-- Assurez-vous que cet import est présent
-import traceback # Pour delete_project
+import shutil
+import traceback
+import re # Added for sanitization
+import datetime # Added for timestamp in metadata
 from . import utils # Use relative import within the package
 
-PROJECTS_DIR = "projet" # Keep this relative for definition simplicity
+PROJECTS_DIR = "projets" # Keep consistent spelling
 PROJECT_CONFIG_FILE = "project_meta.json"
 DEFAULT_MAIN_SCRIPT = "main.py"
 
-# --- Fonction get_project_path (version avec chemin absolu) ---
-def get_project_path(project_name):
-    """Gets the FULL ABSOLUTE path to a project directory."""
+def get_absolute_projects_dir():
+    """Gets the absolute path to the main projects directory."""
     try:
+        # Assumes project_manager.py is in src/
         app_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     except NameError:
         app_root_dir = os.path.abspath(".")
-    abs_projects_dir = os.path.join(app_root_dir, PROJECTS_DIR)
-    project_path = os.path.join(abs_projects_dir, project_name)
-    return os.path.abspath(project_path)
+        if os.path.basename(app_root_dir) == 'src':
+            app_root_dir = os.path.dirname(app_root_dir)
 
-# --- Fonctions existantes ---
+    abs_projects_dir = os.path.join(app_root_dir, PROJECTS_DIR)
+    src_dir_check = os.path.join(app_root_dir, 'src')
+    # Use relative path from CWD only as a last resort if absolute doesn't exist but relative does
+    if not os.path.exists(abs_projects_dir) and os.path.exists(PROJECTS_DIR) and not os.path.isdir(src_dir_check):
+         print(f"Warning: Absolute path '{abs_projects_dir}' not found, falling back to relative '{PROJECTS_DIR}'")
+         return os.path.abspath(PROJECTS_DIR)
+
+    return os.path.abspath(abs_projects_dir)
+
+def get_project_path(project_name):
+    """Gets the FULL ABSOLUTE path to a specific project directory."""
+    # Use os.path.basename to prevent user providing path elements
+    base_name = os.path.basename(project_name)
+    # Sanitize allowing alphanumeric, underscore, hyphen, period
+    safe_project_name = re.sub(r'[^\w.\-]+', '_', base_name)
+    safe_project_name = safe_project_name.strip('_') # Remove leading/trailing underscores
+
+    if safe_project_name != project_name:
+         print(f"Warning: Project name sanitized from '{project_name}' to '{safe_project_name}' for path usage.")
+
+    if not safe_project_name or safe_project_name in ['.', '..']:
+        raise ValueError(f"Invalid project name for path after sanitization: '{project_name}' -> '{safe_project_name}'")
+
+    abs_projects_dir = get_absolute_projects_dir()
+    project_path = os.path.join(abs_projects_dir, safe_project_name)
+    return os.path.abspath(project_path) # Normalize
+
 def ensure_projects_dir():
     """Creates the main projects directory if it doesn't exist using absolute path."""
-    app_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    abs_projects_dir = os.path.join(app_root_dir, PROJECTS_DIR)
+    abs_projects_dir = get_absolute_projects_dir()
     if not os.path.exists(abs_projects_dir):
-        print(f"Creating projects directory: {abs_projects_dir}")
-        os.makedirs(abs_projects_dir)
+        try:
+            print(f"Creating projects directory: {abs_projects_dir}")
+            os.makedirs(abs_projects_dir)
+        except OSError as e:
+            print(f"ERROR: Could not create projects directory '{abs_projects_dir}': {e}")
+            raise # Re-raise
 
 def list_projects():
     """Lists existing projects by checking subdirectories in PROJECTS_DIR."""
-    # Utiliser le chemin absolu pour lister est plus sûr
+    projects = []
+    abs_projects_dir = get_absolute_projects_dir()
     try:
-        app_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        abs_projects_dir = os.path.join(app_root_dir, PROJECTS_DIR)
-        ensure_projects_dir() # S'assurer qu'il existe
-        projects = []
-        if os.path.exists(abs_projects_dir): # Vérifier avant de lister
-            for item in os.listdir(abs_projects_dir):
-                item_path = os.path.join(abs_projects_dir, item)
-                if os.path.isdir(item_path):
-                    # Vérification simple : contient main.py ou un .venv ?
-                    # (get_project_venv_path a besoin du chemin de base)
-                    venv_path_rel = os.path.join(item, ".venv") # Chemin relatif pour utils.get...
-                    # Note: utils.get_project_venv_path attend le chemin *base* du projet
-                    # La vérification ici pourrait être simplifiée ou améliorée
-                    if os.path.exists(os.path.join(item_path, DEFAULT_MAIN_SCRIPT)):
-                         # or os.path.exists(utils.get_project_venv_path(item_path)): # get_project_venv_path attend le chemin base
-                         projects.append(item)
-                    elif os.path.exists(os.path.join(item_path, ".venv")): # Check plus direct
-                          projects.append(item)
+        ensure_projects_dir() # Make sure base directory exists
+        if not os.path.isdir(abs_projects_dir):
+             print(f"Error: Projects directory '{abs_projects_dir}' is not accessible.")
+             return []
+
+        for item in os.listdir(abs_projects_dir):
+            item_path = os.path.join(abs_projects_dir, item)
+            # Check: is it a directory AND contains default script OR metadata file?
+            if os.path.isdir(item_path) and \
+               (os.path.exists(os.path.join(item_path, DEFAULT_MAIN_SCRIPT)) or \
+                os.path.exists(os.path.join(item_path, PROJECT_CONFIG_FILE))):
+                 projects.append(item)
 
         return sorted(projects)
     except Exception as e:
-        print(f"Error listing projects: {e}")
+        print(f"Error listing projects in '{abs_projects_dir}': {e}")
         traceback.print_exc()
-        return [] # Retourner liste vide en cas d'erreur
+        return []
 
 def create_project(project_name):
     """Creates a new project directory and basic structure."""
-    project_path = get_project_path(project_name) # Chemin absolu
+    base_name = os.path.basename(project_name)
+    safe_project_name = re.sub(r'[^\w-]+', '_', base_name) # No periods allowed in dir name usually
+    safe_project_name = safe_project_name.strip('_')
+    if not safe_project_name or safe_project_name in ['.', '..']:
+         print(f"Error: Invalid project name after sanitization: '{project_name}' -> '{safe_project_name}'")
+         return False
+    if safe_project_name != project_name:
+         print(f"Note: Project name sanitized to '{safe_project_name}' for directory.")
+
+    project_path = get_project_path(safe_project_name) # Uses the already sanitized name
     if os.path.exists(project_path):
-        print(f"Project '{project_name}' already exists at {project_path}.")
+        print(f"Project '{safe_project_name}' already exists at {project_path}.")
         return False
     try:
-        print(f"Creating project '{project_name}' at {project_path}...")
+        print(f"Creating project '{safe_project_name}' at {project_path}...")
         os.makedirs(project_path)
         main_script_path = os.path.join(project_path, DEFAULT_MAIN_SCRIPT)
         with open(main_script_path, 'w', encoding='utf-8') as f:
-            f.write(f"# Project: {project_name}\nprint('Hello from project {project_name}!')\n")
-        print(f"Attempting to create venv for {project_name}...")
-        if not utils.ensure_project_venv(project_path): # Passe le chemin absolu
-             print(f"Warning: Failed to create initial venv for {project_name}")
-             # return False # Décommenter pour échouer si venv échoue
-        save_project_metadata(project_name, {"name": project_name, "dependencies": []})
-        print(f"Project '{project_name}' created successfully.")
+            f.write(f"# Project: {safe_project_name}\n\nprint('Hello from project {safe_project_name}!')\n")
+
+        print(f"Attempting to create venv for {safe_project_name}...")
+        venv_created = utils.ensure_project_venv(project_path, progress_callback=lambda msg: print(f"[venv setup] {msg}"))
+        if not venv_created:
+             print(f"Warning: Failed to create initial venv for {safe_project_name}")
+             # return False # Decide if fatal
+
+        initial_metadata = {
+            "name": safe_project_name,
+            "dependencies": [],
+            "created_at": datetime.datetime.now().isoformat() # Use ISO format
+        }
+        save_project_metadata(safe_project_name, initial_metadata)
+
+        print(f"Project '{safe_project_name}' created successfully.")
         return True
     except Exception as e:
-        print(f"Error creating project '{project_name}': {e}"); traceback.print_exc()
-        # Tentative de nettoyage partiel (optionnel et prudent)
-        # if os.path.exists(project_path):
-        #     try: shutil.rmtree(project_path); print("Cleaned up partial directory.")
-        #     except Exception as cleanup_e: print(f"Error during cleanup: {cleanup_e}")
+        print(f"Error creating project '{safe_project_name}': {e}")
+        traceback.print_exc()
+        if os.path.exists(project_path):
+             try: shutil.rmtree(project_path); print(f"Cleaned up partially created: {project_path}")
+             except Exception as cleanup_e: print(f"Error during cleanup: {cleanup_e}")
         return False
 
 def load_project_metadata(project_name):
     """Loads metadata from the project's config file."""
-    project_path = get_project_path(project_name)
-    config_path = os.path.join(project_path, PROJECT_CONFIG_FILE)
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f: return json.load(f)
-        except Exception as e: print(f"Error loading metadata for {project_name}: {e}")
-    return {"name": project_name, "dependencies": []}
+    try:
+        project_path = get_project_path(project_name) # Handles sanitization/path finding
+        config_path = os.path.join(project_path, PROJECT_CONFIG_FILE)
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+             # Return default structure if file missing, using the sanitized name
+             return {"name": os.path.basename(project_path), "dependencies": []}
+    except ValueError as e:
+        print(f"Error loading metadata (invalid name?): {e}")
+        return {"name": "Invalid Project", "dependencies": []}
+    except Exception as e:
+        print(f"Error loading metadata for '{project_name}': {e}")
+        traceback.print_exc()
+        return {"name": project_name, "dependencies": [], "error": str(e)}
 
 def save_project_metadata(project_name, metadata):
     """Saves metadata to the project's config file."""
-    project_path = get_project_path(project_name)
-    config_path = os.path.join(project_path, PROJECT_CONFIG_FILE)
     try:
-        os.makedirs(project_path, exist_ok=True) # Assurer que le dossier existe
-        with open(config_path, 'w', encoding='utf-8') as f: json.dump(metadata, f, indent=4)
-    except Exception as e: print(f"Error saving metadata for {project_name}: {e}")
+        project_path = get_project_path(project_name) # Handles sanitization/path finding
+        config_path = os.path.join(project_path, PROJECT_CONFIG_FILE)
+        os.makedirs(project_path, exist_ok=True)
+        # Add last modified timestamp
+        metadata['last_modified'] = datetime.datetime.now().isoformat()
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=4)
+        # print(f"Metadata saved for '{project_name}'.") # Reduce console noise
+        return True
+    except ValueError as e:
+         print(f"Error saving metadata (invalid name?): {e}")
+         return False
+    except Exception as e:
+        print(f"Error saving metadata for '{project_name}': {e}")
+        traceback.print_exc()
+        return False
 
 def get_project_script_content(project_name, script_name=DEFAULT_MAIN_SCRIPT):
     """Reads the content of a script file within the project."""
-    script_path = os.path.join(get_project_path(project_name), script_name)
-    if os.path.exists(script_path):
-        try:
-            with open(script_path, 'r', encoding='utf-8') as f: return f.read()
-        except Exception as e: print(f"Error reading script {script_path}: {e}"); return f"# Error reading file: {e}"
-    return "# Script not found" # Retourner si le fichier n'existe pas
+    try:
+        project_path = get_project_path(project_name)
+        script_path = os.path.join(project_path, script_name)
+        if os.path.exists(script_path):
+            with open(script_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        else:
+            # print(f"Script '{script_name}' not found in project '{project_name}'.")
+            return f"# Script '{script_name}' not found."
+    except ValueError as e:
+        print(f"Error getting script content (invalid name?): {e}")
+        return f"# Error: {e}"
+    except Exception as e:
+        print(f"Error reading script '{script_name}' for '{project_name}': {e}")
+        # traceback.print_exc() # Reduce console noise
+        return f"# Error reading file: {e}"
 
 def save_project_script_content(project_name, content, script_name=DEFAULT_MAIN_SCRIPT):
     """Writes content to a script file within the project."""
-    project_path = get_project_path(project_name)
-    script_path = os.path.join(project_path, script_name)
     try:
-        os.makedirs(project_path, exist_ok=True) # Assurer que le dossier existe
-        with open(script_path, 'w', encoding='utf-8') as f: f.write(content)
-        print(f"Script '{script_name}' saved for project '{project_name}'.")
+        project_path = get_project_path(project_name)
+        script_path = os.path.join(project_path, script_name)
+        os.makedirs(project_path, exist_ok=True)
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        # print(f"Script '{script_name}' saved for project '{project_name}'.") # Reduce noise
+        # Update metadata last modified time on code save
+        metadata = load_project_metadata(project_name)
+        save_project_metadata(project_name, metadata) # save_project_metadata adds timestamp
         return True
-    except Exception as e: print(f"Error writing script {script_path}: {e}"); return False
+    except ValueError as e:
+        print(f"Error saving script content (invalid name?): {e}")
+        return False
+    except Exception as e:
+        print(f"Error writing script '{script_name}' for '{project_name}': {e}")
+        traceback.print_exc()
+        return False
 
-# --- NOUVELLE FONCTION DE SUPPRESSION ---
 def delete_project(project_name: str) -> bool:
     """Deletes the entire project directory permanently."""
     try:
-        project_path = get_project_path(project_name) # Chemin absolu
-        print(f"Attempting to delete project at: {project_path}")
-        if not os.path.isdir(project_path): print(f"Error: Directory not found: {project_path}"); return False
+        project_path = get_project_path(project_name) # Handles path finding and basic validation
+        print(f"Attempting to delete project at resolved path: {project_path}")
 
-        # Sécurité : Vérifier qu'on est dans le dossier projet attendu
-        app_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        abs_projects_dir = os.path.abspath(os.path.join(app_root_dir, PROJECTS_DIR))
-        # Vérifie que project_path commence bien par abs_projects_dir + séparateur
-        if not project_path.startswith(os.path.join(abs_projects_dir, '')): # os.path.join assure le bon séparateur
-             print(f"CRITICAL ERROR: Path '{project_path}' is outside projects dir '{abs_projects_dir}'. Aborting delete.")
+        if not os.path.isdir(project_path):
+            print(f"Error: Directory not found or is not a directory: {project_path}")
+            return False
+
+        abs_projects_dir = get_absolute_projects_dir()
+        # Check if project_path is inside abs_projects_dir and not the dir itself
+        proj_real = os.path.realpath(project_path)
+        proj_dir_real = os.path.realpath(abs_projects_dir)
+        if not proj_real.startswith(proj_dir_real + os.sep):
+             print(f"CRITICAL ERROR: Path '{proj_real}' is outside projects dir '{proj_dir_real}'. Aborting delete.")
+             return False
+        if os.path.samefile(proj_real, proj_dir_real):
+             print(f"CRITICAL ERROR: Attempting to delete the main projects directory '{proj_dir_real}'. Aborting delete.")
              return False
 
-        shutil.rmtree(project_path) # Suppression récursive
+        shutil.rmtree(project_path) # Recursive delete
         print(f"Project '{project_name}' deleted successfully from {project_path}.")
         return True
 
+    except ValueError as e:
+         print(f"Error deleting project (invalid name?): {e}")
+         return False
     except Exception as e:
         print(f"!!!!!!!! ERROR deleting project '{project_name}' !!!!!!!!")
         print(traceback.format_exc())
         return False
-# --- FIN NOUVELLE FONCTION ---

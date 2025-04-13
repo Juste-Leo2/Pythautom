@@ -1,29 +1,61 @@
 # src/utils.py
+# No changes needed from the previous version for streaming/LM Studio fix.
+# Progress callback already implemented correctly.
 import subprocess
 import sys
 import os
 import platform
-import traceback # Keep for detailed error reporting
+import traceback
+import datetime # For timestamp
+# import re # Not needed here, used in project_manager
+from typing import List, Optional, Callable, Union
+
+from . import project_manager # Use relative import within the package
+
+# Default dummy callback
+def _dummy_progress_callback(message: str):
+     # print(f"[Dummy Callback] {message}")
+     pass
+
+def get_timestamp():
+    """Returns a simple ISO-like timestamp string."""
+    # Changed to ISO format for better compatibility
+    return datetime.datetime.now().isoformat()
 
 # --- UV Command Execution ---
 
 def get_uv_executable_path():
-    """Finds the path to the UV executable."""
+    """Finds the path to the UV executable. Assumes 'uv' is in PATH."""
     return "uv"
 
-# run_uv_command is CORRECT as it is: it expects arguments ONLY and prepends uv_exe
-def run_uv_command(args, cwd=None, capture=True):
-    """Runs a UV command using subprocess, logging CWD and using absolute paths.
-       Expects 'args' to be a list of arguments *for* uv, not including 'uv' itself."""
+def run_uv_command(args: List[str], cwd: Optional[str] = None, capture: bool = True, progress_callback: Optional[Callable[[str], None]] = None) -> Optional[subprocess.CompletedProcess]:
+    """
+    Runs a UV command using subprocess, handling paths and optional progress logging.
+
+    Args:
+        args: List of arguments FOR uv (e.g., ["pip", "install", "requests"]).
+        cwd: Working directory for the command (absolute path preferred).
+        capture: Whether to capture stdout/stderr (True) or let them print directly (False).
+        progress_callback: Optional function to send command output lines to.
+
+    Returns:
+        subprocess.CompletedProcess object or None on critical error (e.g., uv not found).
+    """
     uv_exe = get_uv_executable_path()
-    command = [uv_exe] + args # Prepend the executable name to the arguments
-
+    command = [uv_exe] + args
     abs_cwd = os.path.abspath(cwd) if cwd else os.path.abspath(os.getcwd())
-    cwd_repr = repr(abs_cwd)
-    command_str_repr = ' '.join(map(repr, command))
 
-    print(f"Running UV command: {command_str_repr}")
-    print(f"           with CWD: {cwd_repr}")
+    if not os.path.isdir(abs_cwd):
+        err_msg = f"ERROR: Invalid CWD provided to run_uv_command: {abs_cwd}"
+        print(err_msg)
+        if progress_callback: progress_callback(err_msg)
+        return subprocess.CompletedProcess(args=command, returncode=-1, stdout="", stderr=f"Invalid CWD: {abs_cwd}")
+
+    log_progress = progress_callback or _dummy_progress_callback
+    command_str_repr = ' '.join(map(repr, command))
+    log_progress(f"Running UV: {command_str_repr}")
+    log_progress(f"  in CWD: {repr(abs_cwd)}")
+
     try:
         result = subprocess.run(
             command,
@@ -34,164 +66,198 @@ def run_uv_command(args, cwd=None, capture=True):
             encoding='utf-8',
             errors='replace'
         )
+
+        if capture and progress_callback:
+            # Log stdout/stderr line by line for better readability in GUI console
+            if result.stdout:
+                log_progress("--- UV STDOUT ---")
+                for line in result.stdout.splitlines(): log_progress(line)
+                log_progress("--- End UV STDOUT ---")
+            if result.stderr:
+                log_progress("--- UV STDERR ---")
+                for line in result.stderr.splitlines(): log_progress(line)
+                log_progress("--- End UV STDERR ---")
+
         if result.returncode != 0:
-            print(f"UV Command Error (Code {result.returncode}) in {abs_cwd}:")
-            if capture:
-                stdout_log = result.stdout.strip()
-                stderr_log = result.stderr.strip()
-                if stdout_log: print("STDOUT:", stdout_log)
-                if stderr_log: print("STDERR:", stderr_log)
-        # else: Optionally log success output if needed
+            log_progress(f"UV Command failed with exit code {result.returncode}")
 
         return result
+
     except FileNotFoundError:
-        print(f"Error: '{uv_exe}' command not found. Is UV installed and in PATH?")
-        return None
+        error_msg = f"ERROR: '{uv_exe}' command not found. Is UV installed and in PATH?"
+        print(error_msg)
+        log_progress(error_msg)
+        return None # Critical failure
     except Exception as e:
-        print(f"Error running UV command {command_str_repr} in CWD {cwd_repr}: {e}")
+        error_msg = f"ERROR running UV command {command_str_repr} in CWD {repr(abs_cwd)}: {e}"
+        print(error_msg)
         traceback.print_exc()
-        return None
+        log_progress(error_msg)
+        log_progress(traceback.format_exc())
+        return subprocess.CompletedProcess(args=command, returncode=-1, stdout="", stderr=str(e))
+
 
 # --- Project Environment Helpers ---
 
-def get_project_venv_path(project_base_path):
+def get_project_venv_path(project_base_path: str) -> str:
     """Returns the standard ABSOLUTE path for a project's virtual environment."""
     abs_project_base_path = os.path.abspath(project_base_path)
     return os.path.join(abs_project_base_path, ".venv")
 
-def get_project_python_executable(project_base_path):
+def get_project_python_executable(project_base_path: str) -> Optional[str]:
     """Gets the ABSOLUTE path to the Python executable within the project's venv."""
-    venv_path = get_project_venv_path(project_base_path)
+    venv_path = get_project_venv_path(project_base_path) # Gets absolute path
     if platform.system() == "Windows":
         python_exe = os.path.join(venv_path, "Scripts", "python.exe")
     else:
         python_exe = os.path.join(venv_path, "bin", "python")
-    if not os.path.exists(python_exe):
-        print(f"Warning: Python executable not found at expected path: {python_exe}")
-    return python_exe
+    return python_exe # Return path even if it doesn't exist yet
 
-def ensure_project_venv(project_path):
-    """Creates a UV virtual environment for the project if it doesn't exist using absolute paths."""
+def ensure_project_venv(project_path: str, progress_callback: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Creates a UV virtual environment for the project if it doesn't exist.
+
+    Args:
+        project_path: Absolute path to the project directory.
+        progress_callback: Optional function to send status updates to.
+
+    Returns:
+        True if venv exists or was created successfully, False otherwise.
+    """
     abs_project_path = os.path.abspath(project_path)
     venv_path = get_project_venv_path(abs_project_path)
     indicator_file = os.path.join(venv_path, "pyvenv.cfg")
 
-    print(f"Ensuring venv for project at absolute path: {abs_project_path}")
-    print(f"Checking for venv indicator file: {indicator_file}")
+    log_progress = progress_callback or _dummy_progress_callback
+    log_progress(f"Ensuring venv for project: {abs_project_path}")
+    log_progress(f"Checking for indicator file: {indicator_file}")
 
     if not os.path.exists(indicator_file):
-        print(f"Indicator not found. Creating virtual environment...")
+        log_progress(f"Venv indicator not found. Attempting to create venv at: {venv_path}")
         try:
-            os.makedirs(abs_project_path, exist_ok=True)
-            print(f"Directory ensured: {abs_project_path}")
+            if not os.path.isdir(abs_project_path):
+                 log_progress(f"Creating project directory: {abs_project_path}")
+                 os.makedirs(abs_project_path, exist_ok=True)
         except OSError as e:
-            print(f"ERROR: Could not create project directory {abs_project_path}: {e}")
+            log_progress(f"ERROR: Could not create project directory {abs_project_path}: {e}")
             return False
 
-        print(f"Target venv path for UV command (absolute): {venv_path}")
-
-        # --- CORRECTION HERE: Pass only arguments to run_uv_command ---
-        # Arguments for the 'uv venv' command
         venv_args = ["venv", venv_path, "--seed"]
-        result = run_uv_command(venv_args, cwd=abs_project_path) # Pass only args
-        # ------------------------------------------------------------
+        result = run_uv_command(venv_args, cwd=abs_project_path, progress_callback=log_progress)
 
         if not os.path.exists(indicator_file):
-             print(f"ERROR: UV command ran (exit code {result.returncode if result else 'N/A'}) but indicator file '{indicator_file}' still not found.")
-             if result and result.stderr: print(f"UV stderr might have clues:\n{result.stderr.strip()}")
+             log_progress(f"ERROR: UV command ran (exit code {result.returncode if result else 'N/A'}) but indicator file '{indicator_file}' still not found.")
              return False
-        if not result or result.returncode != 0:
-             print(f"ERROR: Failed to create virtual environment at {venv_path} (UV command failed).")
+        if result is None or result.returncode != 0:
+             log_progress(f"ERROR: Failed to create virtual environment at {venv_path} (UV command failed).")
              return False
 
-        print(f"Virtual environment indicator file found after creation at {indicator_file}.")
+        log_progress(f"Virtual environment created successfully at {venv_path}.")
         return True
     else:
+        log_progress("Virtual environment already exists.")
         return True # Already exists
 
-def install_project_dependencies(project_path, dependencies):
-    """Installs dependencies into the project's venv using UV, absolute paths, and relying on CWD."""
+def install_project_dependencies(project_path: str, dependencies: Union[str, List[str]], progress_callback: Optional[Callable[[str], None]] = None) -> bool:
+    """
+    Installs dependencies into the project's venv using UV.
+
+    Args:
+        project_path: Absolute path to the project directory.
+        dependencies: A list of dependency strings or a single space-separated string.
+        progress_callback: Optional function to send status updates/logs to.
+
+    Returns:
+        True if installation was successful or no dependencies needed, False otherwise.
+    """
     abs_project_path = os.path.abspath(project_path)
-    if not dependencies: return True # Nothing to do
+    log_progress = progress_callback or _dummy_progress_callback
 
-    print(f"Attempting to ensure venv exists for project (absolute): {abs_project_path}")
-    if not ensure_project_venv(abs_project_path):
-         print(f"ERROR: Failed to ensure project venv exists. Cannot install dependencies.")
-         return False
-
-    if isinstance(dependencies, str): dependencies = dependencies.split()
-    if not isinstance(dependencies, list) or not all(isinstance(dep, str) for dep in dependencies): return False
-    dependencies = [dep for dep in dependencies if dep]
-    if not dependencies: return True # Empty list after filtering
-
-    print(f"Installing dependencies in '{abs_project_path}' using 'uv pip install': {dependencies}")
-
-    # --- CORRECTION HERE: Pass only arguments to run_uv_command ---
-    # Arguments for the 'uv pip install' command
-    install_args = ["pip", "install"] + dependencies
-    result = run_uv_command(install_args, cwd=abs_project_path) # Pass only args
-    # ------------------------------------------------------------
-
-    if result and result.returncode == 0:
-        print(f"Successfully installed {', '.join(dependencies)} in {abs_project_path}")
-        return True
+    if isinstance(dependencies, str): deps_list = dependencies.split()
+    elif isinstance(dependencies, list): deps_list = dependencies
     else:
-        print(f"ERROR: Failed to install dependencies {dependencies} in {abs_project_path}")
+        log_progress(f"ERROR: Invalid dependencies format: {type(dependencies)}")
         return False
 
-def run_project_script(project_path, script_name="main.py"):
-    """Runs a Python script within the project's UV environment using 'uv run' and absolute paths."""
+    deps_list = [dep.strip() for dep in deps_list if dep.strip()]
+    if not deps_list:
+        log_progress("No dependencies provided to install.")
+        return True
+
+    log_progress(f"Ensuring venv exists before installing dependencies in {abs_project_path}...")
+    if not ensure_project_venv(abs_project_path, progress_callback=log_progress):
+         log_progress(f"ERROR: Failed to ensure project venv exists. Cannot install dependencies.")
+         return False
+
+    log_progress(f"Installing dependencies via 'uv pip install': {deps_list}")
+    install_args = ["pip", "install"] + deps_list
+    result = run_uv_command(install_args, cwd=abs_project_path, progress_callback=log_progress)
+
+    if result and result.returncode == 0:
+        log_progress(f"Successfully installed: {', '.join(deps_list)}")
+        # Update metadata after successful install
+        try:
+             meta = project_manager.load_project_metadata(os.path.basename(abs_project_path))
+             current_deps = set(meta.get("dependencies", []))
+             current_deps.update(deps_list)
+             meta["dependencies"] = sorted(list(current_deps))
+             project_manager.save_project_metadata(os.path.basename(abs_project_path), meta)
+        except Exception as meta_e:
+             log_progress(f"Warning: Failed to update project metadata after install: {meta_e}")
+        return True
+    else:
+        log_progress(f"ERROR: Failed to install dependencies: {deps_list}")
+        return False
+
+def run_project_script(project_path: str, script_name: str = "main.py", progress_callback: Optional[Callable[[str], None]] = None) -> Optional[subprocess.CompletedProcess]:
+    """
+    Runs a Python script within the project's UV environment using 'uv run'.
+
+    Args:
+        project_path: Absolute path to the project directory.
+        script_name: Name of the script file relative to project_path.
+        progress_callback: Optional function to send execution output/status to.
+
+    Returns:
+        subprocess.CompletedProcess object containing execution results, or None if
+        uv command itself failed critically (e.g., not found).
+    """
     abs_project_path = os.path.abspath(project_path)
-    venv_path = get_project_venv_path(abs_project_path)
-    pyvenv_cfg_path = os.path.join(venv_path, "pyvenv.cfg")
+    log_progress = progress_callback or _dummy_progress_callback
 
-    print(f"Running script for project (absolute path): {abs_project_path}")
-    print(f"Checking for venv indicator file: {pyvenv_cfg_path}")
+    log_progress(f"Preparing to run script: {abs_project_path}/{script_name}")
 
-    if not os.path.exists(pyvenv_cfg_path):
-        print(f"Venv indicator not found. Attempting ensure_project_venv...")
-        if not ensure_project_venv(abs_project_path):
-            print(f"ERROR: Failed to ensure venv exists. Cannot run script.")
-            return subprocess.CompletedProcess(args=[], returncode=-1, stdout="", stderr=f"Failed to ensure virtual environment exists at {venv_path}")
-        else: print(f"Venv ensured/created. Proceeding...")
+    log_progress("Checking virtual environment...")
+    if not ensure_project_venv(abs_project_path, progress_callback=log_progress):
+        log_progress(f"ERROR: Failed to ensure venv exists. Cannot run script.")
+        return subprocess.CompletedProcess(args=[], returncode=-1, stdout="", stderr="Failed to ensure virtual environment.")
 
-    script_path = os.path.join(abs_project_path, script_name)
-    if not os.path.exists(script_path):
-        print(f"Error: Script file not found at {script_path}")
-        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=f"Script not found: {script_path}")
+    script_path_abs = os.path.join(abs_project_path, script_name)
+    if not os.path.exists(script_path_abs):
+        error_msg = f"Error: Script file not found at {script_path_abs}"
+        log_progress(error_msg)
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=error_msg)
 
-    print(f"Running script '{script_path}' using 'uv run -- python {script_name}'...")
+    log_progress(f"Executing script '{script_name}' using 'uv run -- python {script_name}'...")
     try:
-        # --- CORRECTION HERE: Pass only arguments to run_uv_command ---
-        # Arguments for the 'uv run' command
         run_args = ["run", "--", "python", script_name]
-        result = run_uv_command(run_args, cwd=abs_project_path) # Pass only args
-        # ----------------------------------------------------------
+        # Use capture=True so progress_callback can log stdout/stderr from result
+        result = run_uv_command(run_args, cwd=abs_project_path, capture=True, progress_callback=log_progress)
 
-        print("-" * 20 + f" Script Output ({script_name}) " + "-" * 20)
         if result:
-            output_log = f"Exit Code: {result.returncode}\n"
-            stdout_clean = result.stdout.strip() if result.stdout else ""
-            stderr_clean = result.stderr.strip() if result.stderr else ""
-            if stdout_clean: output_log += "STDOUT:\n" + stdout_clean + "\n"
-            else: output_log += "STDOUT: [No output]\n"
-            if stderr_clean: output_log += "STDERR:\n" + stderr_clean + "\n"
-            else: output_log += "STDERR: [No output]\n"
-            print(output_log.strip())
+             log_progress(f"--- Script execution finished (Exit Code: {result.returncode}) ---")
         else:
-             print("ERROR: run_uv_command failed to return a result.")
-             # Construct arguments list manually for CompletedProcess if command list not available
-             constructed_args_for_error = [get_uv_executable_path()] + run_args # Best guess
-             return subprocess.CompletedProcess(args=constructed_args_for_error, returncode=-1, stdout="", stderr="Failed to execute uv command.")
+             log_progress(f"--- Script execution failed (Could not run UV command) ---")
+             constructed_args_for_error = [get_uv_executable_path()] + run_args
+             return subprocess.CompletedProcess(args=constructed_args_for_error, returncode=-127, stdout="", stderr="Failed to execute uv command.")
 
-        print("-" * (42 + len(script_name)))
         return result
 
-    except FileNotFoundError: # This shouldn't happen if run_uv_command handles it, but keep as safety
-        print(f"Error: '{get_uv_executable_path()}' command not found. Is UV installed and in PATH?")
-        return subprocess.CompletedProcess(args=[get_uv_executable_path()], returncode=127, stdout="", stderr="uv command not found")
     except Exception as e:
-        print(f"Error running script {script_path} via 'uv run': {e}")
+        error_msg = f"Error setting up or interpreting 'uv run' for script {script_path_abs}: {e}"
+        print(error_msg)
         traceback.print_exc()
-        constructed_args_for_error = [get_uv_executable_path()] + run_args # Best guess
-        return subprocess.CompletedProcess(args=constructed_args_for_error, returncode=1, stdout="", stderr=f"Exception during script execution: {e}")
+        log_progress(error_msg)
+        log_progress(traceback.format_exc())
+        constructed_args_for_error = [get_uv_executable_path()] + run_args
+        return subprocess.CompletedProcess(args=constructed_args_for_error, returncode=-1, stdout="", stderr=f"Exception during script execution setup: {e}")
