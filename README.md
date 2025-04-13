@@ -2,13 +2,14 @@
 
 [![Français](https://img.shields.io/badge/Langue-Français-blue.svg)](READMEFR.md)
 
-PythAutom is a desktop application leveraging PyQt6, UV, and LM Studio to empower users in creating Python projects through interaction with an AI model running locally **OR ACROSS YOUR NETWORK!** Get ready to build efficiently.
+PythAutom is a desktop application leveraging PyQt6, UV, and LM Studio to empower users in creating Python projects through interaction with an AI model running locally or across your network. Build smarter and faster — effortlessly. 🚀
 
-### ✨ Network Capabilities Unlocked! ✨
+### ✨ New Features Added! ✨
 
-*   **Connect Anywhere:** PythAutom seamlessly links up with your LM Studio server. While it defaults to your local machine (`localhost:1234`), it's ready for **network action!** 🔥
-*   **Remote AI Power:** Running LM Studio on a dedicated server or another PC on your network? PythAutom can tap into that power! Just ensure your LM Studio server is configured to be accessible over the network (check LM Studio's server options!). 🔥
-*   **Flexibility:** Build from your main workstation while leveraging AI power from elsewhere on your LAN! Maximum flexibility! 🎉
+*   **Project Export:** 🗂️ You can now export your generated Python projects as standalone packages or folder structures.
+*   **External AI Integration:** 🤖 Use AI models beyond your local LM Studio server — PythAutom now supports external model connections.
+*   **Support for Reasoning Models (LM Studio):** 🧠 PythAutom is now fully compatible with reasoning-capable models from LM Studio.
+*   **Linux Compatibility:** 🐧 PythAutom now runs smoothly on Linux systems!
 
 ## Prerequisites
 
@@ -28,12 +29,26 @@ Before you begin, ensure you have the following installed and configured:
 
 ## How to Run
 
-1.  Simply **double-click** the `run.bat` file located in the project's root directory.
-2.  This batch script automates the setup process:
-    *   It checks if **UV** (a *lightning-fast* Python package installer and resolver - Huge thanks to the Astral team for this incredible tool!) is installed. If not, it downloads and installs it locally within the project structure.
-    *   It uses UV to create an isolated Python virtual environment named `.venv`.
-    *   It installs the required Python libraries (`PyQt6`, `lmstudio-client`) into the `.venv` environment using UV.
-    *   Finally, it launches the main PythAutom application (`main.py`) using the Python interpreter from the `.venv` environment.
+Depending on your operating system:
+
+### 🪟 Windows:
+
+1.  Double-click the `run_windows.bat` file located in the project's root directory.
+
+### 🐧 Linux:
+
+1.  Open a terminal and run:
+    ```bash
+    chmod +x run_linux.sh
+    ./run_linux.sh
+    ```
+
+Both scripts will:
+
+*   Check if **UV** (a *lightning-fast* Python package installer and resolver - Huge thanks to the Astral team!) is installed. If not, it will be installed locally in the project.
+*   Use UV to create an isolated Python virtual environment named `.venv`.
+*   Install required Python libraries (`PyQt6`, `lmstudio-client`) inside that environment.
+*   Launch the main application (`main.py`) using the Python interpreter from `.venv`.
 
 ## Features
 
@@ -45,9 +60,8 @@ Before you begin, ensure you have the following installed and configured:
 
 ## Planned Improvements / Roadmap
 
-*   [ ] Enhanced conversational interaction with the AI.
-*   [ ] Feature to export generated projects as standalone packages or structures.
+*   [x] Enhanced conversational interaction with the AI.
+*   [x] Feature to export generated projects as standalone packages or structures.
+*   [x] Improved auto-correction mechanisms for generated code based on errors.
 *   [ ] Integration of AI vision capabilities (e.g., interpreting diagrams or UI mockups).
-*   [ ] Improved auto-correction mechanisms for generated code based on errors.
-
----
+*   [ ] Ability to import files (images, audio, or video) for future multimodal features.
