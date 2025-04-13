@@ -7,7 +7,7 @@ PythAutom is a desktop application leveraging PyQt6, UV, and LM Studio to empowe
 ### ✨ New Features Added! ✨
 
 *   **Project Export:** 🗂️ You can now export your generated Python projects as standalone packages or folder structures.
-*   **External AI Integration:** 🤖 Use AI models beyond your local LM Studio server — PythAutom now supports external model connections.
+*   **External AI Integration:** 🤖 Use AI models beyond your local LM Studio server — PythAutom now supports external model connections with AI gemini.
 *   **Support for Reasoning Models (LM Studio):** 🧠 PythAutom is now fully compatible with reasoning-capable models from LM Studio.
 *   **Linux Compatibility:** 🐧 PythAutom now runs smoothly on Linux systems!
 
