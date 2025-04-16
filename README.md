@@ -4,28 +4,38 @@
 
 PythAutom is a desktop application leveraging PyQt6, UV, and LM Studio to empower users in creating Python projects through interaction with an AI model running locally or across your network. Build smarter and faster — effortlessly. 🚀
 
-### ✨ New Features Added! ✨
+### ✨ What's New in Version 3.0 ✨
 
-*   **Project Export:** 🗂️ You can now export your generated Python projects as standalone packages or folder structures.
-*   **External AI Integration:** 🤖 Use AI models beyond your local LM Studio server — PythAutom now supports external model connections with AI gemini.
-*   **Support for Reasoning Models (LM Studio):** 🧠 PythAutom is now fully compatible with reasoning-capable models from LM Studio.
-*   **Linux Compatibility:** 🐧 PythAutom now runs smoothly on Linux systems!
+*   **File Import:** 📁 You can now import files into your projects through the interface.
+*   **Advanced Export:** 🧳 Export directly from the project source for handling complex structures.
+*   **Interrupt AI Generation:** ✋ You can now cancel an ongoing AI generation task at any time.
+*   **Developer Tools Panel:** 🛠️ Access logs and manually install additional packages via a dedicated Dev Tools window.
+*   **Improved Auto-Correction:** 🔁 Enhanced logic to detect and correct code issues more effectively.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed and configured:
+Before you begin, make sure the following are properly installed and configured:
 
-1.  **Python:** Version **3.11 or higher** must be installed and correctly added to your system's `PATH` environment variable.
-2.  **LM Studio:**
-    *   Download and install LM Studio from the official website: [https://lmstudio.ai/](https://lmstudio.ai/)
-    *   Launch the LM Studio application.
-    *   Navigate to the model download section (search icon).
-    *   Download a compatible instruction-tuned model (e.g., `Qwen/Qwen1.5-7B-Chat-GGUF` or similar).
-    *   Go to the **Local Server** tab (icon looks like `<->` on the left).
-    *   Select your downloaded model from the dropdown at the top.
-    *   Click the **"Start Server"** button.
-    *   **Network Setup (Optional):** If you want PythAutom to connect across the network, make sure LM Studio is set to allow connections from other devices (check the server settings in LM Studio, you might need to bind to `0.0.0.0` instead of `localhost`).
-    *   **Important:** Keep LM Studio running with the server active while using PythAutom.
+1.  **Python:** Version **3.11.9 or higher**, and it must be added to your system `PATH`.  
+    👉 Download here: [https://www.python.org/downloads/release/python-3119/](https://www.python.org/downloads/release/python-3119/)
+
+2.  **Choose Your AI Backend** (2 supported options):
+
+### 🧠 Option 1: LM Studio (Recommended for local/offline use)
+
+*   Download LM Studio: [https://lmstudio.ai/](https://lmstudio.ai/)
+*   Launch LM Studio and open the model browser (search icon).
+*   Download an instruction-tuned model such as `Openhands LM 7B v0.1`.
+*   Go to the **Local Server** tab (`<->` icon).
+*   Select the model, then click **"Start Server"**.
+*   *(Optional)* Bind LM Studio to `0.0.0.0` to allow remote network access.
+*   Keep LM Studio running while using PythAutom.
+
+### ☁️ Option 2: Gemini (Google Generative AI API)
+
+*   Visit: [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+*   Create an API key.
+*   In PythAutom, switch to **Gemini mode** and paste your key in the provided field.
 
 ## How to Run
 
@@ -33,7 +43,7 @@ Depending on your operating system:
 
 ### 🪟 Windows:
 
-1.  Double-click the `run_windows.bat` file located in the project's root directory.
+1.  Double-click `run_windows.bat` at the root of the project.
 
 ### 🐧 Linux:
 
@@ -43,25 +53,28 @@ Depending on your operating system:
     ./run_linux.sh
     ```
 
-Both scripts will:
+These scripts will:
 
-*   Check if **UV** (a *lightning-fast* Python package installer and resolver - Huge thanks to the Astral team!) is installed. If not, it will be installed locally in the project.
-*   Use UV to create an isolated Python virtual environment named `.venv`.
-*   Install required Python libraries (`PyQt6`, `lmstudio-client`) inside that environment.
-*   Launch the main application (`main.py`) using the Python interpreter from `.venv`.
+*   Check for **UV** (and auto-install it if missing),
+*   Create a `.venv` isolated Python environment,
+*   Install `PyQt6`, `lmstudio-client`, **and `google-generativeai`** inside that environment,
+*   Automatically launch `main.py` using the virtual environment.
 
 ## Features
 
-*   **Graphical User Interface (GUI):** Provides an intuitive interface built with PyQt6 to manage projects and interact with the AI.
-*   **AI-Powered Code Generation:** Utilizes language models running locally (or on your network!) via the LM Studio server to generate Python code based on user prompts.
-*   **Automatic Dependency Management:** Leverages UV to automatically install required libraries based on AI suggestions or explicit user requests within the project's context.
-*   **Isolated Project Execution:** Runs generated Python scripts within their specific, isolated virtual environments managed by UV.
-*   **Basic Error Handling & Iteration:** Includes basic mechanisms to catch errors during script execution and allows iterating with the AI to debug and fix the code.
+*   **User-Friendly GUI:** Built with PyQt6 to manage Python projects and chat with the AI assistant.
+*   **AI Code Generation:** Generates code based on prompts using LM Studio or Gemini models.
+*   **Dual AI Support:** Choose between local LM Studio servers or Gemini cloud API.
+*   **Smart Dependency Management:** UV installs needed packages based on the AI’s analysis.
+*   **Isolated Environments:** Every project runs in its own dedicated `.venv` for safe execution.
+*   **Debugging & Auto-Fix Loop:** Errors are detected, sent back to the AI, and fixed iteratively.
+*   **File import/export tools** and **developer panel** for advanced users.
 
-## Planned Improvements / Roadmap
+## Roadmap
 
-*   [x] Enhanced conversational interaction with the AI.
-*   [x] Feature to export generated projects as standalone packages or structures.
-*   [x] Improved auto-correction mechanisms for generated code based on errors.
-*   [ ] Integration of AI vision capabilities (e.g., interpreting diagrams or UI mockups).
-*   [ ] Ability to import files (images, audio, or video) for future multimodal features.
+*   [x] Improved conversational AI interactions.
+*   [x] Ability to stop generation mid-process.
+*   [x] Enhanced error correction with feedback loop.
+*   [x] Built-in Dev Tools (logs + manual package installation).
+*   [x] Gemini API support.
+*   [ ] AI vision support.

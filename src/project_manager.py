@@ -6,11 +6,29 @@ import shutil
 import traceback
 import re # Added for sanitization
 import datetime # Added for timestamp in metadata
+from typing import List, Tuple # <<< AJOUTÉ
 from . import utils # Use relative import within the package
 
 PROJECTS_DIR = "projets" # Keep consistent spelling
 PROJECT_CONFIG_FILE = "project_meta.json"
 DEFAULT_MAIN_SCRIPT = "main.py"
+# --- NOUVELLE CONSTANTE ---
+# Patterns à exclure lors de la liste du contenu du projet pour l'IA ou l'exportation
+EXCLUDE_PATTERNS_FOR_LISTING = [
+    ".venv",
+    "__pycache__",
+    "*.pyc",
+    "*~",
+    ".DS_Store",
+    PROJECT_CONFIG_FILE, # Ne pas copier les métadonnées
+    # DEFAULT_MAIN_SCRIPT, # On copie main.py explicitement dans l'export source
+    ".git",
+    "build",
+    "dist",
+    "*.spec",
+    ".venv_dist" # Exclure aussi le venv créé par le script de démarrage distribué
+]
+# ------------------------
 
 def get_absolute_projects_dir():
     """Gets the absolute path to the main projects directory."""
@@ -61,23 +79,63 @@ def ensure_projects_dir():
             raise # Re-raise
 
 def list_projects():
-    """Lists existing projects by checking subdirectories in PROJECTS_DIR."""
     projects = []
     abs_projects_dir = get_absolute_projects_dir()
     try:
-        ensure_projects_dir() # Make sure base directory exists
+        ensure_projects_dir()
         if not os.path.isdir(abs_projects_dir):
              print(f"Error: Projects directory '{abs_projects_dir}' is not accessible.")
              return []
 
+        print(f"[ProjectManager] Listing contents of: {abs_projects_dir}") # DEBUG
+
+        try:
+            # ... (ensure_projects_dir, check isdir abs_projects_dir) ...
+            print(f"[ProjectManager] Listing contents of: {abs_projects_dir}")
+            # --- DEBUG LISTDIR ---
+            try:
+                dir_content = os.listdir(abs_projects_dir)
+                print(f"[ProjectManager] os.listdir() found: {dir_content}")
+            except Exception as list_err:
+                print(f"[ProjectManager] ERROR during os.listdir(): {list_err}")
+                dir_content = []
+            # ---------------------      
+
+        except:
+            pass
+
         for item in os.listdir(abs_projects_dir):
             item_path = os.path.join(abs_projects_dir, item)
-            # Check: is it a directory AND contains default script OR metadata file?
-            if os.path.isdir(item_path) and \
-               (os.path.exists(os.path.join(item_path, DEFAULT_MAIN_SCRIPT)) or \
-                os.path.exists(os.path.join(item_path, PROJECT_CONFIG_FILE))):
-                 projects.append(item)
+            print(f"[ProjectManager] Checking item: '{item}' at path: '{item_path}'") # DEBUG
 
+            # --- DEBUG: Vérification isdir ---
+            is_dir = os.path.isdir(item_path)
+            print(f"[ProjectManager]   Is directory? {is_dir}")
+            # ---------------------------------
+
+            # --- DEBUG: Vérification exclusion ---
+            is_excluded = False
+            import fnmatch # Assure-toi que fnmatch est importé ici ou globalement
+            for pattern in EXCLUDE_PATTERNS_FOR_LISTING:
+                if fnmatch.fnmatch(item, pattern):
+                    is_excluded = True
+                    print(f"[ProjectManager]   Excluded by pattern: '{pattern}'") # DEBUG
+                    break
+            if not is_excluded:
+                print(f"[ProjectManager]   Not excluded.") # DEBUG
+            # ---------------------------------
+
+            # Condition finale pour ajouter le projet
+            if is_dir and not is_excluded:
+                print(f"[ProjectManager]   >>> Adding project: '{item}'") # DEBUG
+                projects.append(item)
+            elif is_dir and is_excluded:
+                 print(f"[ProjectManager]   Skipping '{item}' (directory excluded).")
+            elif not is_dir:
+                 print(f"[ProjectManager]   Skipping '{item}' (not a directory).")
+
+
+        print(f"[ProjectManager] Final list before sort: {projects}") # DEBUG
         return sorted(projects)
     except Exception as e:
         print(f"Error listing projects in '{abs_projects_dir}': {e}")
@@ -139,14 +197,20 @@ def load_project_metadata(project_name):
                 return json.load(f)
         else:
              # Return default structure if file missing, using the sanitized name
-             return {"name": os.path.basename(project_path), "dependencies": []}
+             safe_name = os.path.basename(project_path) # Utilise le nom du dossier réel
+             return {"name": safe_name, "dependencies": []}
     except ValueError as e:
         print(f"Error loading metadata (invalid name?): {e}")
         return {"name": "Invalid Project", "dependencies": []}
     except Exception as e:
         print(f"Error loading metadata for '{project_name}': {e}")
         traceback.print_exc()
-        return {"name": project_name, "dependencies": [], "error": str(e)}
+        # Utilise le nom du dossier réel en cas d'erreur si possible
+        safe_name = project_name
+        try: safe_name = os.path.basename(get_project_path(project_name))
+        except Exception: pass
+        return {"name": safe_name, "dependencies": [], "error": str(e)}
+
 
 def save_project_metadata(project_name, metadata):
     """Saves metadata to the project's config file."""
@@ -240,3 +304,59 @@ def delete_project(project_name: str) -> bool:
         print(f"!!!!!!!! ERROR deleting project '{project_name}' !!!!!!!!")
         print(traceback.format_exc())
         return False
+
+# --- NOUVELLE FONCTION ---
+def get_project_contents(project_name: str, max_depth: int = 3, max_files_per_dir: int = 10) -> List[Tuple[str, str]]:
+    """
+    Lists the relevant contents (files and directories) of a project, excluding specified patterns.
+    Returns a list of tuples: (relative_path, type), where type is 'file' or 'dir'.
+    Limits recursion depth and files listed per directory for performance.
+    """
+    contents = []
+    try:
+        project_path = get_project_path(project_name)
+        if not os.path.isdir(project_path):
+            return []
+
+        def _should_exclude(name: str) -> bool:
+            # Utilise fnmatch pour les patterns glob
+            import fnmatch
+            for pattern in EXCLUDE_PATTERNS_FOR_LISTING:
+                if fnmatch.fnmatch(name, pattern):
+                    return True
+            return False
+
+        for root, dirs, files in os.walk(project_path, topdown=True):
+            # Calcul de la profondeur
+            depth = root[len(project_path):].count(os.sep)
+
+            # Exclure les répertoires selon les patterns et la profondeur
+            dirs[:] = [d for d in dirs if not _should_exclude(d) and depth < max_depth]
+
+            # Ajouter les répertoires restants
+            for d in dirs:
+                rel_path = os.path.relpath(os.path.join(root, d), project_path)
+                contents.append((rel_path.replace(os.sep, '/'), 'dir')) # Normalise le chemin
+
+            # Ajouter les fichiers (limités par max_files_per_dir)
+            files_to_add = [f for f in files if not _should_exclude(f)]
+            for i, f in enumerate(files_to_add):
+                if i >= max_files_per_dir:
+                    # Indiquer qu'il y a plus de fichiers
+                    rel_dir_path = os.path.relpath(root, project_path)
+                    if rel_dir_path == '.': rel_dir_path = '' # Racine
+                    contents.append((f"{rel_dir_path.replace(os.sep, '/')}/...", 'info')) # Indicateur spécial
+                    break
+                rel_path = os.path.relpath(os.path.join(root, f), project_path)
+                contents.append((rel_path.replace(os.sep, '/'), 'file')) # Normalise le chemin
+
+    except ValueError as e:
+        print(f"Error listing contents (invalid name?): {e}")
+    except Exception as e:
+        print(f"Error listing contents for '{project_name}': {e}")
+        traceback.print_exc()
+
+    # Trie pour un affichage cohérent (dossiers d'abord, puis fichiers)
+    contents.sort(key=lambda item: (item[0].count('/'), item[1] != 'dir', item[0]))
+    return contents
+# --- FIN NOUVELLE FONCTION ---
