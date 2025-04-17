@@ -48,7 +48,8 @@ AVAILABLE_GEMINI_MODELS = [
     "gemma-3-27b-it",
     "gemini-2.0-flash-exp",
     "gemini-2.0-flash-lite",
-    "gemini-2.5-pro-preview-03-25", 
+    "gemini-2.5-pro-preview-03-25",
+    "gemini-2.5-flash-preview-04-17"
 ]
 DEFAULT_GEMINI_MODEL = config_manager.get_last_used_gemini_model() or AVAILABLE_GEMINI_MODELS[0]
 
